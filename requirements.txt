@@ -1,0 +1,4 @@
+mp-api
+pymatgen
+google-genai
+python-dotenv
