@@ -1,49 +1,46 @@
 ---
-name: VASP Agent Skill
-description: Interactive conversational agent for VASP workflow automation.
+name: VASP Automation Skill
+description: Modular AI platform for creating VASP DFT workflows (Relaxation, Static, Bands).
 ---
 
-# VASP Agent Skill
+# VASP Automation Skill
 
-This skill provides a conversational AI agent (`vasp_agent.py`) that acts as a physicist and automation engineer to help you set up VASP calculations.
+This skill allows you to consult with an AI Physicist ("Translator Agent") to design and stage high-throughput VASP calculations. It outputs a structured `JobManifest` representing the work to be done.
 
 ## Prerequisites
 
-1.  **Python Environment**: Python 3.9+.
-2.  **Dependencies**:
-    ```bash
-    pip install -r requirements.txt
-    ```
-3.  **API Keys**:
-    - **Materials Project**: Ensure your key is in `config.json` or exported as `MP_API_KEY`.
-    - **Google GenAI**: Export your Google API key:
-        ```bash
-        export GOOGLE_API_KEY="your_google_api_key"
+1.  **Environment**: Python 3.9+ with `python-dotenv`, `google-genai`, `pymatgen`, `mp-api`.
+2.  **Configuration**:
+    -   Ensure a `.env` file exists in the root with:
+        ```env
+        GOOGLE_API_KEY=...
+        MP_API_KEY=...
+        PROJECT_ROOT=/path/to/simulations
+        POTENTIALS_DIR=/path/to/potentials
         ```
 
 ## Usage
 
-Start the agent session:
+Run the platform entry point:
 
 ```bash
-python3 vasp_agent.py
+python3 main.py
 ```
 
-### Conversation Flow
+## Workflow
 
-1.  **Consultant Phase**:
-    - You: "I want to run bands for GaAs"
-    - Agent: Queries Materials Project, analyzes options, and presents a table with AI advice.
-    - You: Select an option (e.g., "1").
+1.  **Consultation**: Ask for a material (e.g., "Bands for Silicon").
+2.  **Negotiation**: The agent will propose settings based on **Crystallography** and **Physics**.
+    -   It uses a "Truth Layer" to avoid crystal system hallucinations.
+    -   It enforces a text-based "Preview" before generating files.
+3.  **Execution**:
+    -   On approval, the agent generates:
+        -   VASP Inputs (`POSCAR`, `INCAR`, `KPOINTS`, `POTCAR`, `job.sh`).
+        -   Directory Structure: `formula/relaxation`, `formula/static-scf`, `formula/bands`.
+    -   **Output**: A JSON `JobManifest` printed to stdout, ready for handoff to a Manager Agent.
 
-2.  **Engineer Phase**:
-    - The agent automatically:
-        - Downloads `POSCAR`.
-        - Constructs `POTCAR` (Local library).
-        - Generates "Wise" `KPOINTS` based on band gap (Metal vs Semiconductor).
-        - Stages `static-scf` and `bands` directories with `INCAR` and `job.sh`.
+## Architecture
 
-## Configuration
-
-- `config.json`: Project root and potentials path.
-- `templates.py`: VASP input templates.
+-   **Entry**: `main.py`
+-   **Core Logic**: `vasp_platform/`
+-   **Schema**: `vasp_platform/schema/manifest.py` (Defines the `VaspJob` contract).
