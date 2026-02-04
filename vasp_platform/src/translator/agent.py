@@ -163,23 +163,30 @@ class TranslatorAgent:
                  settings['use_dft_u'] = True
                  print("DFT+U Enabled.")
 
+        # Initial Print
+        self._print_settings(settings)
+        
         while True:
-            self._print_settings(settings)
-            self._print_settings(settings)
-            user_msg = input("User (Approve/Modify/Preview): ")
+            # Only print if requested
+            user_msg = input("\nUser (Approve/Modify/Preview): ")
             
-            # FAST PATH: Intercept "Preview" to avoid LLM call
+            # FAST PATH: Intercept "Preview"
             if user_msg.lower().strip() in ["preview", "show incar", "show parameters", "show files"]:
                  self._preview(settings, diagnostics)
                  continue
             
+            # FAST PATH: Intercept "Status"
+            if user_msg.lower().strip() in ["status", "show", "what settings"]:
+                 self._print_settings(settings)
+                 continue
+
             prompt = f"""
             Analyze user response: "{user_msg}"
             Current Settings: {json.dumps(settings)}
             Crystallography: {cryst_truth}
             
             Determine intent:
-            1. APPROVE/RUN: Explicit confirmation.
+            1. APPROVE/RUN: Explicit confirmation (Keywords: "yes", "run", "approve", "proceed", "go").
             2. MODIFY: Update params.
             3. CANCEL
             
@@ -220,6 +227,9 @@ class TranslatorAgent:
                      if 'kpoints' in upd:
                          settings['static']['kpoints'] = upd['kpoints']
                          settings['relaxation']['kpoints'] = upd['kpoints']
+                     
+                     # Print Updated Strategy
+                     self._print_settings(settings)
             except Exception as e:
                 print(f"Error parsing AI: {e}")
                 
@@ -235,7 +245,7 @@ class TranslatorAgent:
         st_species = diagnostics['species'] # passed from tools
         diag_ctx = diagnostics.copy()
         
-        for jt in ['relaxation', 'static']:
+        for jt in ['relaxation', 'static', 'bands']:
              ctx = settings[jt].copy()
              ctx['job_type'] = jt
              ctx['is_metal'] = settings['is_metal']

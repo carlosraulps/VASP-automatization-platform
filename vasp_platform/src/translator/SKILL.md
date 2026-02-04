@@ -1,46 +1,33 @@
 ---
-name: VASP Automation Skill
-description: Modular AI platform for creating VASP DFT workflows (Relaxation, Static, Bands).
+name: VASP Translator Skill
+description: Capabilities for Consultative VASP Workflow Design.
 ---
 
-# VASP Automation Skill
+# VASP Translator Skill
 
-This skill allows you to consult with an AI Physicist ("Translator Agent") to design and stage high-throughput VASP calculations. It outputs a structured `JobManifest` representing the work to be done.
+The **Translator Agent** acts as the "Architect" of the platform. It bridges the gap between a human request ("Calculate bands for Si") and the rigid requirements of VASP inputs.
 
-## Prerequisites
+## The Interactive Loop
 
-1.  **Environment**: Python 3.9+ with `python-dotenv`, `google-genai`, `pymatgen`, `mp-api`.
-2.  **Configuration**:
-    -   Ensure a `.env` file exists in the root with:
-        ```env
-        GOOGLE_API_KEY=...
-        MP_API_KEY=...
-        PROJECT_ROOT=/path/to/simulations
-        POTENTIALS_DIR=/path/to/potentials
-        ```
+The agent follows a strict 3-phase consulting process:
 
-## Usage
+### 1. Consultant Phase
+-   **Goal**: Identify the material.
+-   **Action**: Queries Materials Project via `MPRester` to find candidates.
+-   **Output**: Presents a list of options (e.g., Stable vs Unstable ID).
 
-Run the platform entry point:
+### 2. Negotiation Phase
+-   **Goal**: Define physics parameters.
+-   **Features**:
+    -   **Truth Layer**: Runs `analyze_crystallography` to mathematically classify the lattice (e.g., Rhombohedral vs Hexagonal).
+    -   **Preview Mode**: Users can type "Preview" to see the generated `INCAR` files instantly without committing.
+    -   **Physics Rules**: Automatically detects Transition Metals and suggests `DFT+U`.
 
-```bash
-python3 main.py
-```
+### 3. Engineering Phase
+-   **Goal**: Stage the files.
+-   **Action**: Generates the directory structure (`formula/relaxation`, `formula/static`, `formula/bands`).
+-   **Output**: A `JobManifest` (Status=CREATED) ready for the Manager Agent.
 
-## Workflow
-
-1.  **Consultation**: Ask for a material (e.g., "Bands for Silicon").
-2.  **Negotiation**: The agent will propose settings based on **Crystallography** and **Physics**.
-    -   It uses a "Truth Layer" to avoid crystal system hallucinations.
-    -   It enforces a text-based "Preview" before generating files.
-3.  **Execution**:
-    -   On approval, the agent generates:
-        -   VASP Inputs (`POSCAR`, `INCAR`, `KPOINTS`, `POTCAR`, `job.sh`).
-        -   Directory Structure: `formula/relaxation`, `formula/static-scf`, `formula/bands`.
-    -   **Output**: A JSON `JobManifest` printed to stdout, ready for handoff to a Manager Agent.
-
-## Architecture
-
--   **Entry**: `main.py`
--   **Core Logic**: `vasp_platform/`
--   **Schema**: `vasp_platform/schema/manifest.py` (Defines the `VaspJob` contract).
+## Capabilities
+-   **Magmom RLE**: Compresses magnetic moments for large systems to avoid VASP read errors.
+-   **K-Point Logic**: Automatically switches between `Gamma`, `Monkhorst`, and `Line_Mode` based on calculation type.
