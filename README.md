@@ -1,5 +1,7 @@
 # VASP Automation Platform (v2.0)
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > **Status**: Service-Oriented Architecture (Ready for Multi-Agent Scale)
 
 An AI-driven platform for high-throughput Density Functional Theory (DFT) calculations using VASP. This project transitions from linear scripting to a modular, event-driven architecture designed for multi-agent collaboration between an **Architect** (Translator), a **Sysadmin** (Manager), and an **Expert** (Physicist).
