@@ -209,7 +209,7 @@ class VASPSkill:
                     job_settings['use_dft_u'] = False
                     break
         
-        print("\nAI: Do you want to proceed with these settings? Or modify them? (e.g., 'Change Static KPOINTS to 8', 'Run it')")
+        print("\nAI: Do you want to proceed with these settings? Or modify them? (e.g., 'Change Static KPOINTS to k1 k2 k3, Show INCAR's content', 'Show POSCAR', 'Run it')")
         
         while True:
             user_msg = input("User: ")
@@ -442,7 +442,7 @@ class VASPSkill:
             
             # Map 'static' -> 'static-sci'
             if job_type == "static":
-                dir_name = "static-sci"
+                dir_name = "static-scf"
             else:
                 dir_name = job_type
                 
