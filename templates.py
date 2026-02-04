@@ -81,3 +81,28 @@ JOB_SCRIPT = """#!/bin/bash
 export OMP_NUM_THREADS=1
 mpirun -np $SLURM_NTASKS vasp_std > run.log 2>&1
 """
+
+INCAR_RELAX = """# --- SYSTEM & ELECTRONIC ---
+SYSTEM  = {Material} Relaxation
+ENCUT   = 400
+EDIFF   = 1.0e-06
+PREC    = Normal
+ISPIN   = 2
+MAGMOM  = {MAGMOM}
+ISYM    = 0
+
+# --- RELAXATION ---
+IBRION  = 2      # Conjugate Gradient Algorithm
+NSW     = 50     # Max 50 ionic steps
+ISIF    = 3      # Relax ions AND cell shape/volume
+EDIFFG  = -0.01  # Stop when forces < 0.01 eV/A
+
+# --- OUTPUTS ---
+LWAVE   = .FALSE.
+LCHARG  = .FALSE.
+
+# --- PARALLELIZATION ---
+NCORE   = 2
+LREAL   = Auto
+ALGO    = Fast
+"""
