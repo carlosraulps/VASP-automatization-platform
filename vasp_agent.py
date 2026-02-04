@@ -174,12 +174,34 @@ class VASPSkill:
 
         print("\n[Engineer: Analyzing Structure & Proposing Strategy...]")
         
-        # 1. Propose Default Settings
-        job_settings = self.propose_settings(self.selected_doc)
+        # 1. Analyze & Propose
+        job_settings, diagnostics = self.propose_settings(self.selected_doc)
         
         # 2. Negotiation Loop
         print("\n--- Strategy Proposal ---")
+        
+        # Print Diagnostics
+        print("\n[Diagnostics]")
+        print(f"1. System Type: {'Metal' if diagnostics['is_metal'] else 'Insulator'} (Gap: {diagnostics['gap']:.2f} eV)")
+        transition_msg = f"Transition Metals Detected: {', '.join(diagnostics['transition_metals'])}" if diagnostics['transition_metals'] else "No Transition Metals"
+        print(f"2. Chemistry: {transition_msg}")
+        print(f"3. Cell Size: {diagnostics['num_atoms']} atoms")
+        
         self.print_settings(job_settings)
+        
+        # DFT+U Negotiation
+        if diagnostics['transition_metals']:
+            while True:
+                u_input = input("\n[Adaptive Logic] Transition metals detected. Enable DFT+U? (y/n): ").lower()
+                if u_input in ['y', 'yes']:
+                    print("  -> DFT+U Enabled.")
+                    job_settings['use_dft_u'] = True
+                    break
+                elif u_input in ['n', 'no']:
+                    print("  -> DFT+U Disabled.")
+                    job_settings['use_dft_u'] = False
+                    break
+        
         print("\nAI: Do you want to proceed with these settings? Or modify them? (e.g., 'Change Static KPOINTS to 8', 'Run it')")
         
         while True:
@@ -199,14 +221,13 @@ class VASPSkill:
             Return JSON only:
             {{
                 "action": "APPROVE" | "MODIFY" | "CANCEL",
-                "updates": {{ "key": "value" }} (Only if MODIFY, extract specific changes to apply to 'relaxation', 'static', or 'bands' settings),
+                "updates": {{ "key": "value" }} (Only if MODIFY, extract changes for 'relaxation', 'static', 'bands', or keys like 'use_dft_u'),
                 "reply": "Short acknowledgement string"
             }}
             """
             
             try:
                 response = self.client.models.generate_content(model=self.model_name, contents=decision_prompt)
-                # Cleaning json block if model returns ```json ... ```
                 text = response.text.strip()
                 if text.startswith("```"):
                      text = text.split("\n", 1)[1].rsplit("\n", 1)[0]
@@ -220,37 +241,21 @@ class VASPSkill:
                     print("Operation cancelled.")
                     return
                 elif decision['action'] == 'MODIFY':
-                    # Apply updates - this is simple logic, real agent might need complex merging
-                    # For now, let's assume 'updates' contains the direct keys to patch or we re-prompt
-                    # Since the prompt might be hallucinated structure, let's just ask the agent to do the update in the next turn 
-                    # OR we implement a robust update logic. 
-                    # For this skill, we'll try to apply 'updates' blindly if structure matches, or just Re-propose.
-                    # Better: Ask Gemini to return the FULL updated JSON? Too large.
-                    # Let's trust the "updates" field for specific keys like 'kpoints' or 'incar'.
-                    
-                    # Heuristic update application
                     updates = decision.get('updates', {})
-                    # This part is tricky without a schema. 
-                    # Let's simpliy: Just say "Updated" and assume the LLM *could* have updated it, 
-                    # but for this specific exercise, the User Prompt probably gave specific instructions.
-                    # Let's perform a smart update on our job_settings dict based on the user text directly if possible?
-                    # No, let's rely on the LLM's 'updates'.
                     
-                    # Helper to merge updates
+                    # Merge updates
                     for job_type in ['relaxation', 'static', 'bands']:
                         if job_type in updates:
-                             # Deep merge
                              for k, v in updates[job_type].items():
                                  if isinstance(v, dict) and k in job_settings[job_type]:
                                       job_settings[job_type][k].update(v)
                                  else:
                                       job_settings[job_type][k] = v
                     
-                    # If updates has generic keys like "KPOINTS", apply to all appropriate
                     if "kpoints" in updates:
                         job_settings['static']['kpoints'] = updates['kpoints']
-                        job_settings['relaxation']['kpoints'] = updates['kpoints'] # Maybe?
-                        
+                        job_settings['relaxation']['kpoints'] = updates['kpoints']
+                    
                     # Re-print
                     print("\n--- Updated Proposal ---")
                     self.print_settings(job_settings)
@@ -259,54 +264,96 @@ class VASPSkill:
                 print(f"Error processing decision: {e}")
                 
         # 3. Execution
-        self.generate_files_from_settings(job_settings)
+        self.generate_files_from_settings(job_settings, diagnostics)
+
+    def analyze_material(self, doc):
+        """
+        Analyzes structure for adaptive logic properties.
+        """
+        st = doc.structure
+        gap = doc.band_gap
+        
+        is_metal = (gap == 0)
+        num_atoms = len(st)
+        
+        # d-block elements (Sc-Zn, Y-Cd, Hf-Hg) approx
+        transition_metals_set = {
+            "Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn",
+            "Y","Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd",
+            "Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg"
+        }
+        
+        found_tm = []
+        for el in st.composition.elements:
+            if str(el) in transition_metals_set:
+                found_tm.append(str(el))
+                
+        return {
+            "is_metal": is_metal,
+            "gap": gap,
+            "num_atoms": num_atoms,
+            "transition_metals": found_tm,
+            "formula": str(st.composition.reduced_formula)
+        }
 
     def propose_settings(self, doc):
         """
-        Generates initial settings based on physics (Band Gap).
+        Generates initial settings based on diagnostics.
         """
-        gap = doc.band_gap
-        is_metal = (gap == 0)
+        diagnostics = self.analyze_material(doc)
         
+        # Base Settings
         settings = {
+            "is_metal": diagnostics['is_metal'],
+            "use_dft_u": False, # Default OFF, negotiate to ON
             "relaxation": {
                 "kpoints": "Gamma 8 8 8",
-                "incar": {"ISMEAR": 1 if is_metal else 0, "SIGMA": 0.1, "IBRION": 2, "ISIF": 3, "NSW": 40}
+                "incar_overrides": {} # Overrides for IncarBuilder
             },
             "static": {
-                "kpoints": "Monkhorst 12 12 12", # Higher precision
-                "incar": {"ISMEAR": -5 if not is_metal else 1, "SIGMA": 0.05, "IBRION": -1, "NSW": 0, "LWAVE": True}
+                "kpoints": "Monkhorst 12 12 12", 
+                "incar_overrides": {}
             },
             "bands": {
                 "kpoints": "Line_Mode",
-                "incar": {"ISMEAR": 0, "SIGMA": 0.05, "IBRION": -1, "ICHARG": 11}
+                "incar_overrides": {}
             }
         }
-        return settings
+        return settings, diagnostics
 
     def print_settings(self, settings):
-        print(f"1. Relaxation ({settings['relaxation']['kpoints']}) | ISMEAR={settings['relaxation']['incar']['ISMEAR']}")
-        print(f"2. Static     ({settings['static']['kpoints']})     | ISMEAR={settings['static']['incar']['ISMEAR']}")
-        print(f"3. Bands      ({settings['bands']['kpoints']})      | ICHARG={settings['bands']['incar']['ICHARG']}")
+        print(f"1. Relaxation ({settings['relaxation']['kpoints']})")
+        print(f"2. Static     ({settings['static']['kpoints']})")
+        print(f"3. Bands      ({settings['bands']['kpoints']})")
 
-    def generate_files_from_settings(self, settings):
+    def generate_files_from_settings(self, settings, diagnostics):
         print("\n[Engineer: writing files...]")
         formula = str(self.selected_doc.structure.composition.reduced_formula)
         folder = os.path.join(self.project_root, formula)
         os.makedirs(folder, exist_ok=True)
         
-        # POSCAR
+        # POSCAR (Common)
         poscar = Poscar(self.selected_doc.structure)
         poscar.write_file(os.path.join(folder, "POSCAR"))
         
-        # POTCAR
+        # POTCAR (Common)
         self.construct_potcar(folder, self.selected_doc.structure)
         
+        # Instantiate Builder
+        incar_builder = templates.IncarBuilder()
+        
+        # Magmom info
+        magmoms = []
+        for site in self.selected_doc.structure.species:
+             sz = str(site)
+             if sz in diagnostics['transition_metals']: magmoms.append("4.0") # High spin guess
+             else: magmoms.append("0.6")
+        diagnostics['magmom'] = " ".join(magmoms)
+
         # Subdirectories
-        # Updated list to include relaxation
         for job_type in ['relaxation', 'static', 'bands']: 
             
-            # Map 'static' -> 'static-sci' to match requirement, others keep name
+            # Map 'static' -> 'static-sci'
             if job_type == "static":
                 dir_name = "static-sci"
             else:
@@ -321,31 +368,24 @@ class VASPSkill:
                      shutil.copy(os.path.join(folder, f), os.path.join(sub_path, f))
             
             # KPOINTS
-            # Ensure the key exists in settings (it should from propose_settings)
             if job_type in settings and 'kpoints' in settings[job_type]:
                 kpts_str = settings[job_type]['kpoints']
                 self.write_kpoints(sub_path, kpts_str)
             
-            # INCAR
-            # Select Template
-            if job_type == "relaxation":
-                base = templates.INCAR_RELAX
-            elif job_type == "static":
-                base = templates.INCAR_STATIC
-            else:
-                base = templates.INCAR_BANDS
+            # INCAR (Dynamic Generation)
+            # Prepare context for builder
+            ctx_settings = settings.get(job_type, {})
+            ctx_settings['job_type'] = job_type
+            ctx_settings['is_metal'] = settings['is_metal']
+            ctx_settings['use_dft_u'] = settings['use_dft_u']
             
-            content = base.format(Material=formula, MAGMOM="2.0") # Hack: Magmom logic is simplified here
+            # Using overrides from negotiation
+            # (Note: In previous phase we stored 'incar' but new builder expects 'incar_overrides' for patching base)
+            # We map 'incar' to 'incar_overrides' if present legacy-wise or just pass as overrides
+            overrides = ctx_settings.get('incar_overrides', {})
+            # If user negotiated raw keys, they might be in a different spot, but for now we assume they are in overrides.
             
-            # Patching content with negotiated settings
-            if job_type in settings and 'incar' in settings[job_type]:
-                for k, v in settings[job_type]['incar'].items():
-                    # Regex replace or append
-                    import re
-                    if re.search(f"^{k}\\s*=", content, re.MULTILINE):
-                        content = re.sub(f"^{k}\\s*=.*", f"{k}   = {v}", content, flags=re.MULTILINE)
-                    else:
-                        content += f"\n{k}   = {v}"
+            content = incar_builder.generate_incar(ctx_settings, diagnostics)
             
             with open(os.path.join(sub_path, "INCAR"), "w") as f:
                 f.write(content)
