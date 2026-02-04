@@ -14,6 +14,11 @@ import templates
 # Load Environment Variables from .env
 load_dotenv()
 
+# Suppress SDK warning: "Both GOOGLE_API_KEY and GEMINI_API_KEY are set. Using GOOGLE_API_KEY."
+if os.environ.get('GOOGLE_API_KEY') and os.environ.get('GEMINI_API_KEY'):
+    # Prioritize GOOGLE_API_KEY and remove GEMINI_API_KEY from the process environment to quiet the SDK
+    del os.environ['GEMINI_API_KEY']
+
 # Configuration from .env
 PROJECT_ROOT = os.environ.get('PROJECT_ROOT')
 POTENTIALS_DIR = os.environ.get('POTENTIALS_DIR')
@@ -209,16 +214,23 @@ class VASPSkill:
         while True:
             user_msg = input("User: ")
             
-            # Extract Lattice Context for Physics Logic
-            lat = self.selected_doc.structure.lattice
-            lattice_info = f"a={lat.a:.2f}, b={lat.b:.2f}, c={lat.c:.2f} (Angstrom)"
+            # Extract Crystallography Truth
+            cryst_truth = self.analyze_crystallography(self.selected_doc)
+            truth_block = f"""
+            [CRYSTALLOGRAPHY TRUTH]
+            System: {cryst_truth['system']}
+            Lattice Angles: {cryst_truth['lattice_angles']}
+            Dimensions: {cryst_truth['dimensions']}
+            Dimensionality Hint: {'Likely SLAB/2D' if cryst_truth['is_slab'] else 'Likely BULK_3D'}
+            """
             
             # Logic to break loop if Approved
             decision_prompt = f"""
             Analyze the user's response to the VASP settings proposal.
             User Input: "{user_msg}"
             Current Settings JSON: {json.dumps(job_settings)}
-            Lattice Constants: {lattice_info}
+            
+            {truth_block}
             
             Determine if the user WANTS to:
             1. APPROVE/RUN: EXPLICITLY confirms (e.g., "Run", "Yes", "Generate", "Write files").
@@ -227,14 +239,17 @@ class VASPSkill:
             4. CANCEL: Wants to stop (e.g., "Exit", "Cancel").
             
             PROTOCOL: When ACTION is MODIFY, the 'reply' must explicitly state the physical reason.
-            - For KPOINTS: Mention Linear Density vs Lattice Vector length.
-            - For PREC/ALGO: Mention cost vs accuracy.
+            
+            CRITICAL PHYSICS RULES (DO NOT IGNORE):
+            A. GEOMETRY: Never confuse Rhombohedral/Trigonal with Cubic. Check the angles in [CRYSTALLOGRAPHY TRUTH]. If angles != 90, it is NOT Cubic.
+            B. DIMENSIONALITY: Do not recommend 1 in K-points (flat mesh) unless 'Dimensionality Hint' is SLAB/2D or user explicitly requests it. For Bulk, sample Z (e.g., 4 4 4).
+            C. SAFETY: If DFT+U is Disabled for Transition Metals (Cr, Fe, Ni...), warn the user: "Warning: Metallic/Non-magnetic result likely without U."
             
             Return JSON only:
             {{
                 "action": "APPROVE" | "MODIFY" | "PREVIEW" | "CANCEL",
                 "updates": {{ "key": "value" }} (Only if MODIFY, extract changes),
-                "reply": "Polite confirmation PLUS physics rationale if modifying."
+                "reply": "Polite confirmation PLUS physics rationale if modifying. Include Warnings if Rule C applies."
             }}
             """
             
@@ -330,6 +345,38 @@ class VASPSkill:
             "formula": str(st.composition.reduced_formula)
         }
 
+    def analyze_crystallography(self, doc):
+        """
+        Truth Layer: Exact crystallography data to preventing hallucinations.
+        """
+        st = doc.structure
+        lat = st.lattice
+        
+        # 1. System Truth (From MP Doc or Analyser)
+        # doc.symmetry is usually populated by MPRester
+        system = "Unknown"
+        if doc.symmetry:
+            system = str(doc.symmetry.crystal_system).capitalize()
+        
+        # 2. Angles Truth
+        angles = f"alpha={lat.alpha:.1f}, beta={lat.beta:.1f}, gamma={lat.gamma:.1f}"
+        
+        # 3. Dimensionality Heuristic (Z-padding check)
+        # If c is large (>20A) and formula is 2D-like... 
+        # But rigorous way: check density or just keep it simple as requested
+        is_slab = False
+        if lat.c > 20.0:
+            is_slab = True # Simple flag for LLM to consider
+            
+        dims = f"a={lat.a:.2f}, b={lat.b:.2f}, c={lat.c:.2f}"
+            
+        return {
+            "system": system,
+            "lattice_angles": angles,
+            "dimensions": dims,
+            "is_slab": is_slab
+        }
+
     def propose_settings(self, doc):
         """
         Generates initial settings based on diagnostics.
@@ -356,9 +403,20 @@ class VASPSkill:
         return settings, diagnostics
 
     def print_settings(self, settings):
+        u_status = "Enabled" if settings.get('use_dft_u') else "Disabled"
         print(f"1. Relaxation ({settings['relaxation']['kpoints']})")
+        print(f"   [INCAR: IBRION=2, ISIF=3, DFT+U={u_status}]")
+        
         print(f"2. Static     ({settings['static']['kpoints']})")
+        # Heuristic display of overrides
+        st_ov = settings['static'].get('incar_overrides', {})
+        st_info = f"ISMEAR={st_ov.get('ISMEAR', 'Default')}, LREAL={st_ov.get('LREAL', 'Default')}"
+        print(f"   [INCAR: {st_info}, DFT+U={u_status}]")
+        
         print(f"3. Bands      ({settings['bands']['kpoints']})")
+        bd_ov = settings['bands'].get('incar_overrides', {})
+        bd_info = f"ICHARG={bd_ov.get('ICHARG', 11)}"
+        print(f"   [INCAR: {bd_info}, DFT+U={u_status}]")
 
     def generate_files_from_settings(self, settings, diagnostics):
         print("\n[Engineer: writing files...]")
