@@ -7,6 +7,7 @@ An AI-driven platform for high-throughput Density Functional Theory (DFT) calcul
 The project is structured as a scalable platform (`vasp_platform/`) where functionality is isolated into specialized modules.
 
 ### Current State: The Translator Agent
+- **Documentation**: [Translator SKILL](vasp_platform/src/translator/SKILL.md)
 The core of the current system is the **Translator Agent**, which acts as the "Architect." It handles:
 - **Consultation**: Interaction with the user to define materials and goals.
 - **Engineering**: Mathematical analysis of crystallography and physics parameters.
@@ -33,11 +34,13 @@ vasp_automation_platform/
 The platform is designed to integrate two additional agents:
 
 ### 1. The Manager Agent (Sysadmin)
+- **Documentation**: [Manager SKILL](vasp_platform/src/manager/SKILL.md)
 - **Target**: High-Performance Computing (HPC) clusters.
 - **Role**: Read the `JobManifest` created by the Translator, submit jobs via Slurm, and monitor run status.
 - **Intelligence**: Handle queue priorities and basic node failure recovery.
 
 ### 2. The Physicist Agent (Expert)
+- **Documentation**: [Physicist SKILL](vasp_platform/src/physicist/SKILL.md)
 - **Target**: Analysis & Reporting.
 - **Role**: Post-process VASP outputs (OUTCAR, XML).
 - **Intelligence**: Check for convergence, detect electronic/magnetic properties, and advise the Translator on subsequent steps (e.g., "Increase K-points for convergence").
