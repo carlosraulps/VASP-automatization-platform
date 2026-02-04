@@ -214,14 +214,15 @@ class VASPSkill:
             Current Settings JSON: {json.dumps(job_settings)}
             
             Determine if the user WANTS to:
-            1. APPROVE/RUN: They agree (e.g., "Run it", "Looks good", "Yes").
-            2. MODIFY: They want to change a parameter (e.g., "Change ISMEAR to 0", "Make KPOINTS 6x6x6").
-            3. CANCEL: They want to stop (e.g., "Exit", "Cancel").
+            1. APPROVE/RUN: EXPLICITLY confirms (e.g., "Run", "Yes", "Generate", "Write files").
+            2. MODIFY: Wants to change a parameter (e.g., "Change ISMEAR to 0").
+            3. PREVIEW: Wants to see the full content of files (e.g. "Show INCAR", "Show vars", "preview").
+            4. CANCEL: Wants to stop (e.g., "Exit", "Cancel").
             
             Return JSON only:
             {{
-                "action": "APPROVE" | "MODIFY" | "CANCEL",
-                "updates": {{ "key": "value" }} (Only if MODIFY, extract changes for 'relaxation', 'static', 'bands', or keys like 'use_dft_u'),
+                "action": "APPROVE" | "MODIFY" | "PREVIEW" | "CANCEL",
+                "updates": {{ "key": "value" }} (Only if MODIFY, extract changes),
                 "reply": "Short acknowledgement string"
             }}
             """
@@ -240,6 +241,28 @@ class VASPSkill:
                 elif decision['action'] == 'CANCEL':
                     print("Operation cancelled.")
                     return
+                elif decision['action'] == 'PREVIEW':
+                    # Generate INCAR strings in memory and print
+                    print("\n[Preview Mode - NOT writing files]")
+                    incar_builder = templates.IncarBuilder()
+                    
+                    # Hack: recreate magmom/diagnostics context for accurate preview
+                    # We need species list which is in self.selected_doc.structure
+                    st_species = [str(s) for s in self.selected_doc.structure.species]
+                    diag_ctx = diagnostics.copy()
+                    diag_ctx['species'] = st_species
+                    
+                    for job_type in ['relaxation', 'static', 'bands']:
+                        ctx = job_settings.get(job_type, {})
+                        ctx['job_type'] = job_type
+                        ctx['is_metal'] = job_settings['is_metal']
+                        ctx['use_dft_u'] = job_settings['use_dft_u']
+                        
+                        preview_str = incar_builder.generate_incar(ctx, diag_ctx)
+                        print(f"\n--- INCAR PREVIEW ({job_type}) ---")
+                        print(preview_str) 
+                        print("-" * 30)
+                        
                 elif decision['action'] == 'MODIFY':
                     updates = decision.get('updates', {})
                     
@@ -251,7 +274,7 @@ class VASPSkill:
                                       job_settings[job_type][k].update(v)
                                  else:
                                       job_settings[job_type][k] = v
-                    
+
                     if "kpoints" in updates:
                         job_settings['static']['kpoints'] = updates['kpoints']
                         job_settings['relaxation']['kpoints'] = updates['kpoints']
@@ -342,13 +365,8 @@ class VASPSkill:
         # Instantiate Builder
         incar_builder = templates.IncarBuilder()
         
-        # Magmom info
-        magmoms = []
-        for site in self.selected_doc.structure.species:
-             sz = str(site)
-             if sz in diagnostics['transition_metals']: magmoms.append("4.0") # High spin guess
-             else: magmoms.append("0.6")
-        diagnostics['magmom'] = " ".join(magmoms)
+        # Pass species list for MAGMOM RLE
+        diagnostics['species'] = [str(s) for s in self.selected_doc.structure.species]
 
         # Subdirectories
         for job_type in ['relaxation', 'static', 'bands']: 

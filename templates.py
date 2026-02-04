@@ -95,11 +95,45 @@ class IncarBuilder:
             "ALGO": "Fast"
         }
 
+    def format_magmom(self, structure_info):
+        """
+        Generates Run-Length Encoded MAGMOM string (e.g., '8*4.0 8*0.6')
+        """
+        magmoms = []
+        # We need the actual structure species list to group correctly.
+        # Use structure_info['species'] which we need to make sure is passed
+        species_list = structure_info.get('species', [])
+        
+        if not species_list:
+            return structure_info.get('magmom', '') # Fallback
+
+        # Heuristic assignment
+        raw_moments = []
+        tm_set = {"Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn",
+                  "Y","Zr","Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd",
+                  "Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg"}
+        
+        for sp in species_list:
+             el = "".join([c for c in sp if c.isalpha()]) # Remove oxidation state numbers if any
+             if el in tm_set:
+                 raw_moments.append(4.0) # High spin default
+             else:
+                 raw_moments.append(0.6)
+
+        # Run-Length Encoding using itertools.groupby
+        from itertools import groupby
+        parts = []
+        for val, group in groupby(raw_moments):
+            count = sum(1 for _ in group)
+            parts.append(f"{count}*{val}")
+            
+        return " ".join(parts)
+
     def generate_incar(self, settings, structure_info):
         """
         Generates INCAR string based on settings and structure info.
         settings: dict containing 'job_type', 'incar_overrides', 'is_metal', 'use_dft_u', etc.
-        structure_info: dict containing 'num_atoms', 'formula', 'magmom'
+        structure_info: dict containing 'num_atoms', 'formula', 'magmom', 'species'
         """
         job_type = settings.get('job_type', 'static')
         is_metal = settings.get('is_metal', False)
@@ -108,7 +142,9 @@ class IncarBuilder:
         # Start with base
         incar = self.base_config.copy()
         incar['SYSTEM'] = f"{structure_info.get('formula', 'System')} {job_type.capitalize()}"
-        incar['MAGMOM'] = structure_info.get('magmom', '')
+        
+        # MAGMOM RLE
+        incar['MAGMOM'] = self.format_magmom(structure_info)
 
         # Job Type Specifics
         if job_type == 'relaxation':
@@ -125,7 +161,9 @@ class IncarBuilder:
                 "IBRION": -1,
                 "NSW": 0,
                 "LWAVE": ".TRUE.",
-                "LCHARG": ".TRUE."
+                "LCHARG": ".TRUE.",
+                "ALGO": "Normal", # Physics Fix
+                "LREAL": ".FALSE." # Physics Fix
             })
         elif job_type == 'bands':
             incar.update({
@@ -133,7 +171,9 @@ class IncarBuilder:
                 "NSW": 0,
                 "ICHARG": 11,
                 "LWAVE": ".FALSE.",
-                "LCHARG": ".FALSE."
+                "LCHARG": ".FALSE.",
+                "ALGO": "Normal", # Physics Fix
+                "LREAL": ".FALSE." # Physics Fix
             })
 
         # Logic Rule 1: Smearing
@@ -152,14 +192,14 @@ class IncarBuilder:
             incar['LDAU'] = ".TRUE."
             incar['LDAUTYPE'] = 2
             incar['LMAXMIX'] = 4
-            # Simplified U-value placeholder - usually requires per-species list
-            # For now, we assume the user might manually edit or we append generic
-            # In a real agent, we'd map species to U-values here.
+            # Simplified U-value placeholder
+            # In production, this needs mapping to specific LDAUU/LDAUL
 
-        # Logic Rule 3: Precision (LREAL)
+        # Logic Rule 3: Precision (LREAL) - Only applied if not already set strictly above
+        # But allow small cell override if strictly small
         num_atoms = structure_info.get('num_atoms', 100)
         if num_atoms < 10:
-            incar['LREAL'] = ".FALSE."
+             incar['LREAL'] = ".FALSE."
 
         # Apply Overrides
         overrides = settings.get('incar_overrides', {})
