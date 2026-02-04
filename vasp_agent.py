@@ -14,16 +14,18 @@ import templates
 # Load Environment Variables from .env
 load_dotenv()
 
-# Load Configuration
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
-with open(CONFIG_PATH, 'r') as f:
-    CONFIG = json.load(f)
+# Configuration from .env
+PROJECT_ROOT = os.environ.get('PROJECT_ROOT')
+POTENTIALS_DIR = os.environ.get('POTENTIALS_DIR')
+MP_API_KEY = os.environ.get('MP_API_KEY')
 
-PROJECT_ROOT = CONFIG['PROJECT_ROOT']
-POTENTIALS_DIR = CONFIG['POTENTIALS_DIR']
-# Handle if value is a Key string or Env Var name
-api_key_val = CONFIG.get('API_KEY_ENV_VAR', '')
-MP_API_KEY = os.environ.get(api_key_val, api_key_val) if api_key_val and len(api_key_val) < 20 else api_key_val
+if not PROJECT_ROOT:
+    print("Warning: PROJECT_ROOT not set in .env")
+    PROJECT_ROOT = os.getcwd() # Fallback?
+
+if not POTENTIALS_DIR:
+    # Just a warning, logic handles it later
+    pass
 
 # Gemini Setup
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
@@ -207,11 +209,16 @@ class VASPSkill:
         while True:
             user_msg = input("User: ")
             
+            # Extract Lattice Context for Physics Logic
+            lat = self.selected_doc.structure.lattice
+            lattice_info = f"a={lat.a:.2f}, b={lat.b:.2f}, c={lat.c:.2f} (Angstrom)"
+            
             # Logic to break loop if Approved
             decision_prompt = f"""
             Analyze the user's response to the VASP settings proposal.
             User Input: "{user_msg}"
             Current Settings JSON: {json.dumps(job_settings)}
+            Lattice Constants: {lattice_info}
             
             Determine if the user WANTS to:
             1. APPROVE/RUN: EXPLICITLY confirms (e.g., "Run", "Yes", "Generate", "Write files").
@@ -219,11 +226,15 @@ class VASPSkill:
             3. PREVIEW: Wants to see the full content of files (e.g. "Show INCAR", "Show vars", "preview").
             4. CANCEL: Wants to stop (e.g., "Exit", "Cancel").
             
+            PROTOCOL: When ACTION is MODIFY, the 'reply' must explicitly state the physical reason.
+            - For KPOINTS: Mention Linear Density vs Lattice Vector length.
+            - For PREC/ALGO: Mention cost vs accuracy.
+            
             Return JSON only:
             {{
                 "action": "APPROVE" | "MODIFY" | "PREVIEW" | "CANCEL",
                 "updates": {{ "key": "value" }} (Only if MODIFY, extract changes),
-                "reply": "Short acknowledgement string"
+                "reply": "Polite confirmation PLUS physics rationale if modifying."
             }}
             """
             
