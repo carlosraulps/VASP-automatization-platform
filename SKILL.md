@@ -41,7 +41,7 @@ python3 vasp_agent.py
         - Downloads `POSCAR`.
         - Constructs `POTCAR` (Local library).
         - Generates "Wise" `KPOINTS` based on band gap (Metal vs Semiconductor).
-        - Stages `static-sci` and `bands` directories with `INCAR` and `job.sh`.
+        - Stages `static-scf` and `bands` directories with `INCAR` and `job.sh`.
 
 ## Configuration
 

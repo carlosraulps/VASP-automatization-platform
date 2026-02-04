@@ -440,7 +440,7 @@ class VASPSkill:
         # Subdirectories
         for job_type in ['relaxation', 'static', 'bands']: 
             
-            # Map 'static' -> 'static-sci'
+            # Map 'static' -> 'static-scf'
             if job_type == "static":
                 dir_name = "static-scf"
             else:
@@ -487,9 +487,9 @@ class VASPSkill:
         print(f"[Success] Data generated in {folder}")
         print("\n[Next Steps - Manual Workflow]")
         print("1. Run 'relaxation'. check convergence.")
-        print("2. Copy 'relaxation/CONTCAR' to 'static-sci/POSCAR'.")
-        print("3. Run 'static-sci'.")
-        print("4. Copy 'static-sci/CHGCAR' to 'bands/CHGCAR'.")
+        print("2. Copy 'relaxation/CONTCAR' to 'static-scf/POSCAR'.")
+        print("3. Run 'static-scf'.")
+        print("4. Copy 'static-scf/CHGCAR' to 'bands/CHGCAR'.")
         print("5. Run 'bands'.")
 
     def write_kpoints(self, folder, kpts_setting):

@@ -100,7 +100,7 @@ def phase_b_potential_construction(material_folder, structure):
 
 def phase_c_staging_configuration(material_folder, formula):
     print("Phase C: Staging and Configuration...")
-    subdirs = ["static-sci", "bands"]
+    subdirs = ["static-scf", "bands"]
     
     files_to_copy = ["POSCAR", "POTCAR"]
     # Generate KPOINTS if not exists? Prompt says "Copy: POSCAR, POTCAR, and KPOINTS".
@@ -125,7 +125,7 @@ def phase_c_staging_configuration(material_folder, formula):
                 shutil.copy(src, dst)
         
         # Write INCAR
-        incar_template = templates.INCAR_STATIC if sub == "static-sci" else templates.INCAR_BANDS
+        incar_template = templates.INCAR_STATIC if sub == "static-scf" else templates.INCAR_BANDS
         # Generate MAGMOM string
         # Simple logic: 0.6 for all atoms for now, or per prompt "Generate standard magnetic moments based on elements"
         # Since I don't have a complex logic table, I will set a placeholder or read structure.
@@ -135,7 +135,7 @@ def phase_c_staging_configuration(material_folder, formula):
         
         # Write job.sh
         job_template = templates.JOB_SCRIPT
-        job_type = "Static" if sub == "static-sci" else "Bands"
+        job_type = "Static" if sub == "static-scf" else "Bands"
         
         # Populate templates
         # Need MAGMOM.
@@ -183,7 +183,7 @@ def main():
     with open(kpoints_path, "w") as f:
         f.write("Automatic Mesh\n0\nGamma\n11 11 11\n0 0 0\n") # Simple default
     
-    subdirs = ["static-sci", "bands"]
+    subdirs = ["static-scf", "bands"]
     files_to_copy = ["POSCAR", "POTCAR", "KPOINTS"]
 
     magmom_str = " ".join(["2.0"] * len(structure)) # Fallback if not using element specific
@@ -201,7 +201,7 @@ def main():
                 shutil.copy(src, dst)
         
         # Write INCAR
-        if sub == "static-sci":
+        if sub == "static-scf":
             content = templates.INCAR_STATIC.format(Material=args.formula, MAGMOM=magmom_str)
         else:
             content = templates.INCAR_BANDS.format(Material=args.formula, MAGMOM=magmom_str)
@@ -210,7 +210,7 @@ def main():
             f.write(content)
             
         # Write job.sh
-        job_type = "Static" if sub == "static-sci" else "Bands"
+        job_type = "Static" if sub == "static-scf" else "Bands"
         job_content = templates.JOB_SCRIPT.format(Material=args.formula, JobType=job_type)
         with open(os.path.join(sub_path, "job.sh"), "w") as f:
             f.write(job_content)
