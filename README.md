@@ -1,60 +1,33 @@
-# VASP Automation Platform
+# VASP Automation Platform (v2.0)
 
-An AI-driven platform for high-throughput Density Functional Theory (DFT) calculations using VASP. This project transitions from linear scripting to a modular, event-driven architecture designed for multi-agent collaboration.
+> **Status**: Service-Oriented Architecture (Ready for Multi-Agent Scale)
 
-## 🏗️ Architecture: Service-Oriented Design
+An AI-driven platform for high-throughput Density Functional Theory (DFT) calculations using VASP. This project transitions from linear scripting to a modular, event-driven architecture designed for multi-agent collaboration between an **Architect** (Translator), a **Sysadmin** (Manager), and an **Expert** (Physicist).
 
-The project is structured as a scalable platform (`vasp_platform/`) where functionality is isolated into specialized modules.
+---
 
-### Current State: The Translator Agent
-- **Documentation**: [Translator SKILL](vasp_platform/src/translator/SKILL.md)
-The core of the current system is the **Translator Agent**, which acts as the "Architect." It handles:
-- **Consultation**: Interaction with the user to define materials and goals.
-- **Engineering**: Mathematical analysis of crystallography and physics parameters.
-- **Job Staging**: Creation of VASP-ready input files (`POSCAR`, `POTCAR`, `INCAR`, `KPOINTS`, `job.sh`).
-- **Data Contract**: Generating a `JobManifest` (Pydantic model) that serves as the digital blueprint for execution.
+## 🏗️ Architecture
 
-### Project Structure
-```text
-vasp_automation_platform/
-├── main.py                 # The Orchestrator (Session start)
-├── .env                    # Secrets & Config (API Keys, Paths)
-├── vasp_platform/
-│   ├── schema/
-│   │   └── manifest.py     # Shared Data Contract (VaspJob, JobManifest)
-│   ├── src/
-│   │   ├── core/           # LLM Adapters and State Management
-│   │   └── translator/     # Translator Agent Logic, Tools, and Builders
-│   └── data/               # Workbench for simulation files
-└── legacy/                 # Original scripts (vasp_agent.py, vasp_translator.py)
+The platform operates on a "Manifest-Driven" workflow. Agents do not call each other directly; they communicate by reading and updating a shared **Data Contract** (`JobManifest`).
+
+```mermaid
+graph TD
+    User([User]) -->|Consultation| Translator[Translator Agent]
+    Translator -->|Creates| Manifest(JobManifest JSON)
+    Manifest -->|Read by| Manager[Manager Agent]
+    Manager -->|Submits to| HPC[HPC Cluster / Slurm]
+    HPC -->|Outputs| RawFiles(OUTCAR / XML)
+    RawFiles -->|Analyzed by| Physicist[Physicist Agent]
+    Physicist -->|Updates| Manifest
 ```
 
-## 🚀 Future Roadmap
+---
 
-The platform is designed to integrate two additional agents:
+## 🚀 Quick Start
 
-### 1. The Manager Agent (Sysadmin)
-- **Documentation**: [Manager SKILL](vasp_platform/src/manager/SKILL.md)
-- **Target**: High-Performance Computing (HPC) clusters.
-- **Role**: Read the `JobManifest` created by the Translator, submit jobs via Slurm, and monitor run status.
-- **Intelligence**: Handle queue priorities and basic node failure recovery.
-
-### 2. The Physicist Agent (Expert)
-- **Documentation**: [Physicist SKILL](vasp_platform/src/physicist/SKILL.md)
-- **Target**: Analysis & Reporting.
-- **Role**: Post-process VASP outputs (OUTCAR, XML).
-- **Intelligence**: Check for convergence, detect electronic/magnetic properties, and advise the Translator on subsequent steps (e.g., "Increase K-points for convergence").
-
-## 🛠️ Setup & Usage
-
-### 1. Configuration
-Create a `.env` file in the root directory:
-```env
-GOOGLE_API_KEY=your_gemini_key
-MP_API_KEY=your_materials_project_key
-PROJECT_ROOT=/path/to/your/simulation/folders
-POTENTIALS_DIR=/path/to/your/vasp/potentials
-```
+### 1. Prerequisites
+-   Python 3.9+
+-   `.env` file with `GOOGLE_API_KEY`, `MP_API_KEY`, `PROJECT_ROOT`.
 
 ### 2. Execution
 Run the orchestrator:
@@ -62,11 +35,55 @@ Run the orchestrator:
 python3 main.py
 ```
 
-## 📜 Key Features
-- **Crystallography Truth Layer**: Hard-coded analysis to prevent LLM hallucinations.
-- **Run-Length Encoding (RLE)**: Automatic `MAGMOM` formatting for large systems.
-- **Physics Rationale Protocol**: Forced explainability for every parameter modification.
-- **Pydantic Schemas**: Strict validation of job data for seamless handovers.
+### 3. The Workflow
+1.  **Consult**: "I need a band structure for GaN."
+2.  **Negotiate**: The Agent looks up the structure, checks the Band Gap, and proposes a customized `INCAR` strategy.
+3.  **Approve**: You type "Run", and the Agent generates the full job directory structure.
+
+---
+
+## 📂 Deep Analysis of Modules
+
+The source code (`vasp_platform/src`) is divided into four distinct domains:
+
+### 1. Core Layer (`src/core`)
+-   **Role**: The "Brain Stem".
+-   **Key Components**:
+    -   `llm.py`: A robust adapter for Google GenAI, handling API quotas and retries.
+    -   `state.py`: Manages the short-term memory of the active agent session.
+-   **Philosophy**: Agents should never talk to raw APIs directly; they must go through the Core.
+
+### 2. Translator Module (`src/translator`)
+-   **Role**: The "Architect".
+-   **Documentation**: [Translator Skill](vasp_platform/src/translator/SKILL.md)
+-   **Key Innovation**: **The Truth Layer**.
+    -   Instead of letting the LLM "guess" the crystal structure, `tools.py` uses Pymatgen to rigorously compare lattice angles and classify the system (e.g., distinguishing Rhombohedral from Cubic).
+    -   **IncarBuilder**: A logic-heavy class that generates `INCAR` files. It uses **Run-Length Encoding (RLE)** for `MAGMOM` tags.
+
+### 3. Manager Module (`src/manager`) [Planned]
+-   **Role**: The "Sysadmin".
+-   **Documentation**: [Manager Skill](vasp_platform/src/manager/SKILL.md)
+-   **Scalability**: Designed to handle `squeue` polling and SSH persistence.
+
+### 4. Physicist Module (`src/physicist`) [Planned]
+-   **Role**: The "Scientist".
+-   **Documentation**: [Physicist Skill](vasp_platform/src/physicist/SKILL.md)
+-   **Intelligence**: Checks `EDIFF` (Electronic) and `EDIFFG` (Ionic) limits to certify if a run is scientifically valid.
+
+---
+
+## 📂 Infrastructure & Scalability
+
+### ⚙️ Configuration (`vasp_platform/config/`)
+-   **[Read More](vasp_platform/config/README.md)**
+-   Decouples the codebase from the environment.
+-   Supports **Cluster Profiles** for multi-HPC deployments.
+
+### 💾 Data Lake (`vasp_platform/data/`)
+-   **[Read More](vasp_platform/data/README.md)**
+-   **Manifests**: The persistent record of intent.
+-   **Simulations**: The ephemeral working directory (mirrors scratch).
+-   **Knowledge Base**: Future home for RAG documents.
 
 ---
 *Developed by the VASP Automation Team.*
