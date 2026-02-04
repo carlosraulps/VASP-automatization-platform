@@ -1,3 +1,59 @@
+# Environment
 .env
+.venv
+venv/
+env/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Type Checking
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# IDE / Editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# VASP Platform Data Lake
+# Keep the directory structure (GitKeep or README) but ignore raw simulation data
+vasp_platform/data/simulations/*
+!vasp_platform/data/simulations/.gitkeep
+vasp_platform/data/knowledge_base/*
+!vasp_platform/data/knowledge_base/.gitkeep
+
+# VASP Outputs (General safety)
+OUTCAR
+VASPRUN.xml
+CHGCAR
+WAVECAR
+PROCAR
+LOCPOT
+IBZKPT
+XDATCAR
+OSZICAR
+PCDAT
+REPORT
