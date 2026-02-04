@@ -11,6 +11,8 @@ from vasp_platform.src.core.llm import GoogleGenAIAdapter
 from vasp_platform.src.translator.tools import TranslatorTools
 from vasp_platform.src.translator.builder import IncarBuilder, JOB_SCRIPT_TEMPLATE
 
+import re
+
 class TranslatorAgent:
     def __init__(self, project_root: str, potentials_dir: str):
         self.project_root = project_root
@@ -163,7 +165,13 @@ class TranslatorAgent:
 
         while True:
             self._print_settings(settings)
+            self._print_settings(settings)
             user_msg = input("User (Approve/Modify/Preview): ")
+            
+            # FAST PATH: Intercept "Preview" to avoid LLM call
+            if user_msg.lower().strip() in ["preview", "show incar", "show parameters", "show files"]:
+                 self._preview(settings, diagnostics)
+                 continue
             
             prompt = f"""
             Analyze user response: "{user_msg}"
@@ -173,13 +181,13 @@ class TranslatorAgent:
             Determine intent:
             1. APPROVE/RUN: Explicit confirmation.
             2. MODIFY: Update params.
-            3. PREVIEW: Show files.
-            4. CANCEL
+            3. CANCEL
             
             PROTOCOL: explain physics reason for modifications.
             RULES: 
             - Check Angles {cryst_truth['lattice_angles']} vs System.
             - Warn if DFT+U disabled for TM data {diagnostics['transition_metals']}.
+            - CRITICAL: NEVER use LaTeX escape sequences (like \\text) in JSON strings. Use plain text.
             
             JSON: {{ "action": "...", "updates": {{...}}, "reply": "..." }}
             """
@@ -188,6 +196,9 @@ class TranslatorAgent:
             # Simple cleaning
             if "```" in resp: resp = resp.split("```")[1].replace("json\n","")
             
+            # JSON Sanitization for LaTeX
+            resp = self._clean_json(resp)
+            
             try:
                 dec = json.loads(resp)
                 print(f"AI: {dec.get('reply', '')}")
@@ -195,7 +206,7 @@ class TranslatorAgent:
                 act = dec['action'] 
                 if act == 'APPROVE': return True
                 if act == 'CANCEL': return False
-                if act == 'PREVIEW': self._preview(settings, diagnostics)
+                # PREVIEW handled in fast path logic above
                 if act == 'MODIFY':
                      # Apply updates logic
                      upd = dec.get('updates', {})
@@ -328,3 +339,15 @@ class TranslatorAgent:
                  for fname in potfiles:
                      with open(fname, 'rb') as infile:
                          outfile.write(infile.read())
+    def _clean_json(self, text: str) -> str:
+        r"""
+        Sanitizes invalid escapes (like LaTeX \text) before parsing.
+        Rule: If backslash is followed by something not in [ " \ / b f n r t u ], wait, simple rule: 
+        Just replace single backslashes that aren't escapes.
+        Better: Use regex to find invalid escapes and double the slash.
+        """
+        # Finds a backslash that is NOT followed by valid escape chars
+        # Valid JSON escapes: " \ / b f n r t u
+        # Pattern: \\(?![/\\bfnrtu"])
+        pattern = r'\\(?![/\\bfnrtu"])'
+        return re.sub(pattern, r'\\\\', text)

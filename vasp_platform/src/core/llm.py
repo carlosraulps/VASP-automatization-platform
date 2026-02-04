@@ -1,6 +1,7 @@
 import os
 import sys
 from google import genai
+from vasp_platform.src.utils.ux import Thinking
 from dotenv import load_dotenv
 
 class GoogleGenAIAdapter:
@@ -20,13 +21,14 @@ class GoogleGenAIAdapter:
 
     def generate(self, prompt: str) -> str:
         """
-        Generates content with basic error handling.
+        Generates content with basic error handling and UX spinner.
         """
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name, 
-                contents=prompt
-            )
+            with Thinking("AI is thinking"):
+                response = self.client.models.generate_content(
+                    model=self.model_name, 
+                    contents=prompt
+                )
             return response.text.strip()
         except Exception as e:
             print(f"[LLM Error] {e}")
