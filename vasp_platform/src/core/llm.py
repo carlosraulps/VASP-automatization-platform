@@ -4,7 +4,7 @@ from google import genai
 from dotenv import load_dotenv
 
 class GoogleGenAIAdapter:
-    def __init__(self, model_name: str = 'gemini-1.5-flash'):
+    def __init__(self, model_name: str = 'gemini-3-flash-preview'):
         load_dotenv()
         self.api_key = os.environ.get('GOOGLE_API_KEY')
         if not self.api_key:
