@@ -13,9 +13,9 @@ This directory houses the logic for the platform's independent modules. The arch
 -   **Capabilities**: Crystal analysis, Parameter negotiation, Input generation.
 -   **Documentation**: [Translator Skill](translator/SKILL.md)
 
-### 3. `manager/` (The Sysadmin) [Planned]
+### 3. `manager/` (The Sysadmin)
 -   **Role**: Manages HPC interactions (jobs, queues, SSH).
--   **Capabilities**: `sbatch`, `squeue`, Fault tolerance.
+-   **Capabilities**: `sbatch`, `squeue`, Fault tolerance, AI Debugging (`ai_debugger.py`), VASPkit Integration.
 -   **Documentation**: [Manager Skill](manager/SKILL.md)
 
 ### 4. `physicist/` (The Expert) [Planned]
